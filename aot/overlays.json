@@ -1,0 +1,64 @@
+{
+  "schema": "psxrecomp AOT methods v1",
+  "game_id": "SLUS-00433",
+  "notes": [
+    "Fighting Force (USA), original release (Redump 1867). Facts only; no game bytes.",
+    "The boot EXE SLUS_004.33 chain-loads GAME.EXE with BIOS A0h:51h LoadExec at 0x800111A4; GAME.EXE is the game (menus, levels).",
+    "GAME.EXE is a self-describing PS-X EXE: load 0x80010000, entry 0x8006CD64, text 0xB1000. LoadExec places it from its header and jumps to the header entry."
+  ],
+  "disc_hashes": {
+    "sha1": "24a2ea97e21f4fa7bf19f5e52139851e052b1e90",
+    "sha256": "6226c68518aa7dd0c0371cf77ce81cbd17d8e499cb5a5240b9f310ba45d950ac"
+  },
+  "checks": [
+    {
+      "method": "words",
+      "file": "SLUS_004.33",
+      "file_offset": "0x800",
+      "base": "0x80010000",
+      "values": {
+        "0x80011190": "0x3C048003",
+        "0x80011194": "0x24840318",
+        "0x80011198": "0x3C05801F",
+        "0x8001119C": "0x34A5FFF0",
+        "0x800111A0": "0x00003021",
+        "0x800111A4": "0x0C004DA7",
+        "0x8001369C": "0x240A00A0",
+        "0x800136A0": "0x01400008",
+        "0x800136A4": "0x24090051",
+        "0x80030318": "0x6F726463",
+        "0x8003031C": "0x475C3A6D",
+        "0x80030320": "0x2E454D41",
+        "0x80030324": "0x3B455845",
+        "0x80030328": "0x00000031"
+      }
+    }
+  ],
+  "generic_exclude_files": [
+    {
+      "files": ["GAME.EXE"],
+      "reason": "Owned by the fixed_address_extents image below, which names only its code. As a generic PS-X EXE it is split at the boot EXE's text end (0x800B5000) into a code recipe plus a data-only recipe [0x800B5000,0x800C1000) that has no native entries and fails the static audit."
+    }
+  ],
+  "images": [
+    {
+      "method": "fixed_address_extents",
+      "allow_missing": true,
+      "extents": [
+        {
+          "file": "GAME.EXE",
+          "file_offset": "0x800",
+          "base": "0x80010000",
+          "address": "0x80010000",
+          "size": "0x6A0CC",
+          "sha256": "b7dd0be8defa9ecff53b6c2742da56f6f4616b213efc4637f7b23ab15070ad78",
+          "load_addr": "0x80010000",
+          "reason": "GAME.EXE code [0x80010000,0x8007A0CC): PS-X header load address 0x80010000 (LoadExec places the body there). The last jr ra is at 0x8007A0C4 (delay slot 0x8007A0C8); 0x8007A0CC starts a table of code pointers, then data tables and zero fill up to the header's text end 0x800C1000 (0 jr ra there)."
+        }
+      ],
+      "entries": ["0x8006CD64"]
+    }
+  ],
+  "expected_records": 1,
+  "static_output": "generated/overlays_static.c"
+}

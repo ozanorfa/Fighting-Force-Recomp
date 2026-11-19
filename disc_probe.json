@@ -1,0 +1,29 @@
+{
+  "cue_path": "disc/FightingForce.cue",
+  "cue_name": "FightingForce.cue",
+  "bin_name": "FightingForce_Track01.bin",
+  "track_count": 27,
+  "data_track_size": 71618400,
+  "data_track_md5": "e89b0647d7f5237ed0b23ee3f705ab59",
+  "data_track_sha1": "24a2ea97e21f4fa7bf19f5e52139851e052b1e90",
+  "data_track_crc32": "2d6b7e03",
+  "boot_exe": "SLUS_004.33",
+  "serial": "SLUS-00433",
+  "serial_exe": "SLUS_004.33",
+  "volume_id": "FIGHTINGFORCE",
+  "display_name": "FightingForce",
+  "load_address": "0x80010000",
+  "entry_pc": "0x80010EE4",
+  "text_size": "0x000A5000",
+  "stack_base": "0x801FFFF0",
+  "require_cue": true,
+  "required_disc_fp": "445ad9273d6eb6252248800bd42c76a3027517a78160b12a6a442bf56c136c3a",
+  "boot_exe_sha256": "a2dfc5326c746eb930f4005a8896e284071dc8469ac30648189c00684f9d77f2",
+  "seed_count": 193,
+  "warnings": [],
+  "notes": [
+    "entry_pc/load_address/text_size/stack_base taken from PS-X EXE header.",
+    "seeds are first-pass boot-EXE JAL targets (+ entry); expect to grow as overlays / runtime paths are discovered.",
+    "required_disc_fp is psxrecomp-toc-v1 (matches runtime DiscIdentity)."
+  ]
+}

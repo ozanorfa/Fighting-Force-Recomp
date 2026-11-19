@@ -1,0 +1,24 @@
+format_version = 11
+id = "ff.third-player"
+version = "0.1.0"
+name = "Third Player"
+author = "Fighting Force 3-player project"
+description = "Adds a third player: online, the match's third seat; on one PC, controller 3 joins on the fighter select screen with X. Also holds enemy spawns while every enemy slot is taken (the original game crashes there on level 0x11)."
+resolver = "declarative"
+# The plugin keeps its state in mod memory, which is part of a savestate:
+# keep its savestates apart from stock ones.
+save_compatibility = "isolated"
+
+[[target]]
+game_id = "SLUS-00433"
+
+[[feature]]
+id = "p3"
+name = "Third player"
+description = "A third fighter joins two-player games, driven by controller seat 3 (it plays only when someone joins: online the third seat, offline X on the fighter select screen). Needs a runtime with at least 5 controller seats and the multitap on port 2 (game_3p.toml); in other builds it changes nothing but the spawn fix."
+group = "Gameplay"
+default_enabled = true
+
+[[plugin]]
+feature = "p3"
+id = "ff.third-player"

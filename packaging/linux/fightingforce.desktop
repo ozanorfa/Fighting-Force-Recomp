@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=FightingForce
+Exec=FightingForce_Recompiled
+Icon=fightingforce
+Categories=Game;
+Terminal=false

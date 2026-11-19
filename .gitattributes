@@ -1,0 +1,8 @@
+# Check text files out with LF on every system (Windows Git defaults to
+# CRLF). The configs, seeds and sources here are read by tools that expect
+# the same bytes on macOS and Windows.
+* text=auto eol=lf
+*.png binary
+*.ico binary
+# cmd.exe misreads labels / goto in LF-only batch files: keep them CRLF.
+*.bat text eol=crlf

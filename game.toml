@@ -1,0 +1,69 @@
+# Autofilled by tools/new_project_layout/probe_disc.py from your legal dump.
+# Review before shipping. Runtime quirks / overlay seeds still need hand work.
+
+[game]
+name = "Fighting Force"
+id = "SLUS-00433"
+players = 2
+exe = "disc/SLUS_004.33"
+disc = "disc/FightingForce.cue"
+load_address = "0x80010000"
+entry_pc = "0x80010EE4"
+text_size = "0x000A5000"
+stack_base = "0x801FFFF0"
+
+# Digests are for data Track 01 (first BINARY FILE / TRACK 01).
+[prepare_disc]
+out_dir = "disc"
+bin_name = "FightingForce_Track01.bin"
+cue_name = "FightingForce.cue"
+boot_exe = "SLUS_004.33"
+known_sizes = [71618400]
+known_md5 = [
+  "e89b0647d7f5237ed0b23ee3f705ab59",
+]
+known_sha1 = [
+  "24a2ea97e21f4fa7bf19f5e52139851e052b1e90",
+]
+known_crc32 = [
+  "2d6b7e03",
+]
+
+[recompiler]
+seeds = "seeds/ghidra_funcs.txt"
+out_dir = "generated"
+strict = true
+# SLUS_004.33 is a boot stage: real code only in 0x80010000-0x80020000
+# (285 of its 289 `jr ra`); the other ~600 KB of the 0xA5000 text is data.
+# The default "whole-image" sweep compiled that data as code (11,074 entries,
+# 6.6 M lines of C). "reachable" walks from the entry and boundary-checked
+# seeds along direct calls; unseen targets fall back to the interpreter
+# (docs/config_schema.md). GAME.EXE, the game proper, is compiled through
+# the AOT profile in aot/overlays.json.
+discovery = "reachable"
+
+[runtime]
+window_title = "Fighting Force Recompiled"
+memcard_dir = "saves"
+overlay_cache = true
+# Quick Start's fast loading (ff.quick-start): keep the guest SPU running at
+# its own pace but drop the sped-up sound, so loads are quiet, not squeaky.
+turbo_audio_sink = true
+
+[video]
+renderer = "opengl"
+aspect_ratio = "4:3"
+# True colour, no PS1 dither pattern (user, 2026-11-18). OpenGL only and
+# presentation only: the netplay SW@1x raster never dithers. Players can
+# turn it back on in Mods -> Image Filtering -> Dithering.
+dithering = "off"
+
+[controller]
+default_mode = "digital"
+
+# Online mount gate: digests + track count + optional TOC fingerprint
+# (see docs/NETPLAY.md).
+[netplay]
+require_cue = true
+required_tracks = 27
+required_disc_fp = "445ad9273d6eb6252248800bd42c76a3027517a78160b12a6a442bf56c136c3a"

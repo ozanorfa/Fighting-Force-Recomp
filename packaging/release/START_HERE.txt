@@ -1,0 +1,59 @@
+Fighting Force Recompiled (3 players) @VERSION@
+
+For friends only: do not upload or share this ZIP publicly. It contains no
+disc data and no retail BIOS (OpenBIOS is bundled); you need your own disc.
+
+WHAT YOU NEED
+- Windows 10 (1903 or newer) or 11, 64-bit.
+- Your own Fighting Force (USA) disc dump: one .cue file and all 27 .bin
+  tracks in one folder. A match checks the track layout, so everyone needs
+  this same dump.
+- The same ZIP as the other players (the version is in its name and above).
+- For matches: Radmin VPN (https://www.radmin-vpn.com/).
+
+FIRST START
+1. Right-click the ZIP -> Extract All, to a short path (Desktop or
+   Downloads; not Program Files).
+2. Double-click Play.bat in the new folder. If Windows says it protected
+   your PC: More info -> Run anyway.
+3. The launcher asks for your disc: choose the .cue file. It is remembered.
+4. Your controller: first screen, card PLAYER 1, choose it below the
+   controller picture (Configure changes the buttons). Keyboard: arrows,
+   X = Cross, S = Circle, Z = Square, A = Triangle, Return = Start.
+5. The first time the game opens a netplay port, Windows asks about the
+   firewall: tick Private and Public, then Allow access.
+
+PLAYING
+- Quick Start is on: no start-up videos, straight to the fighter select.
+  Alone on one PC, players 2 and 3 join there with Cross and leave with
+  Triangle before they confirm.
+- Three different fighters. On the select screen your ring: red = player 1
+  (the host), green = player 2, yellow = player 3.
+- Start pauses the game for everyone; only the player who paused can resume
+  (Start) or quit (Select -> QUIT).
+- The picture is drawn in true colour, without the PS1 dither pattern.
+  Mods -> Image Filtering (turn it on) -> Dithering -> Native (PS1) brings
+  it back. Picture settings are each player's own, also in a match.
+
+A MATCH OVER RADMIN VPN
+1. Everyone starts Radmin VPN: one player creates a network, the other two
+   join it. Online, every PC uses its own PLAYER 1 card.
+2. The host: NETPLAY -> LAN / Direct IP -> your name, Save -> Host Lobby,
+   Max Players 3, Create.
+3. The others: NETPLAY -> LAN / Direct IP -> your name, Save -> Join Direct:
+   Host IP = the host's 26.x.x.x address (shown in Radmin VPN), Port 7777.
+4. When all three are seated, the host presses PLAY.
+- Saves stay on the host's PC: the game's own checkpoints, and save states
+  (the host presses F7, a number key, then S to save or L to load).
+- If a player drops out, the match ends for everyone: start again and load
+  the last checkpoint or save state.
+
+IF SOMETHING GOES WRONG
+Start the game with Play_with_log.bat instead and keep its black window
+open. When the game closes, it packs a report ZIP into the reports folder
+and shows it: send that file to whoever sent you the game. If a match ends
+on every PC ("The match ended: ..."), every player closes the game and
+sends their report ZIP. Started with Play.bat? Double-click Report.bat
+after closing the game.
+
+Keep the saves folder when you update to a new ZIP.

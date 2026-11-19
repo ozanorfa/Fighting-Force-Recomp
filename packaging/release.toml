@@ -1,0 +1,58 @@
+# Friends' prebuilt ZIP (user decision 2026-11-18: a ready-to-play EXE instead
+# of every player building from their own disc). Cut on a Windows PC, in a git
+# checkout with the disc prepared in disc/, with windows/Make_Release.bat:
+#   psxrecomp/tools/package_title_release.ps1 --channel playtest --platform windows
+# The framework packager regenerates the game C from that disc, builds
+# Release with PSX_DEBUG_TOOLS=OFF, and refuses any disc image, retail BIOS,
+# save, personal setting or C source in the package. The ZIP contains the
+# compiled game: share it privately with friends who own the disc, never in a
+# public release or in git (dist/ is ignored).
+#
+# Channel: playtest. The public channel refuses the builtin cd-speed and
+# fast-loading mod packages, which this build stages, and FF has no
+# diagnostics package, so playtest needs no [diagnostics] table.
+schema = 1
+
+[product]
+name = "FightingForce3P"
+display_name = "Fighting Force Recompiled (3 players)"
+exe_name = "FightingForce_Recompiled"
+version_file = "VERSION"
+game_toml = "game.toml"
+# The shipped game.toml is the 3-player config. The runtime built with
+# FF_MAX_PLAYERS=5 opens game_3p.toml when started without --game
+# (DEFAULT_GAME_CONFIG_PATH in CMakeLists.txt), so [payload] ships that file
+# too.
+player_game_toml = "game_3p.toml"
+zip_folder = "FightingForce3P"
+
+[build]
+# The same switches as tools/ff_build.py's netplay build (build-net): five
+# controller seats (the 3rd player is a multitap seat), recomp-net netplay,
+# LAN / Direct IP only (no libjuice download; Radmin VPN is a LAN).
+cmake_args = ["-DPSX_SDL_BACKEND=SDL3", "-DPSX_PGXP_VARIANT=OFF",
+              "-DFF_MAX_PLAYERS=5", "-DFF_NETPLAY=ON", "-DRNET_ENABLE_ICE=OFF"]
+# Selective PGO defaults on for supported native GNU/Ninja toolchains. Do not
+# add per-title profile paths or reuse another build's training data.
+
+[aot]
+mode = "none"
+
+[overlay_toolchain]
+ship = true
+
+[payload]
+start_here = "packaging/release/START_HERE.txt"
+files = [
+    { from = "game_3p.toml", to = "game_3p.toml" },
+    { from = "packaging/release/windows/Play.bat", to = "Play.bat" },
+    { from = "packaging/release/windows/Play_with_log.bat", to = "Play_with_log.bat" },
+    { from = "packaging/release/windows/Report.bat", to = "Report.bat" },
+]
+
+[linux]
+app_run = "packaging/linux/AppRun"
+desktop_file = "packaging/linux/fightingforce.desktop"
+icon = "assets/psxrecomp.png"
+payload_dir = "fightingforce"
+env_prefix = "FIGHTINGFORCERECOMP"

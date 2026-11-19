@@ -1,0 +1,71 @@
+format_version = 11
+id = "ff.quick-start"
+version = "0.1.0"
+name = "Quick Start"
+author = "Fighting Force 3-player project"
+description = "Gets you into the game faster: skips the start-up logo and intro videos and the in-game cutscenes the way the game's own buttons do, opens straight on the fighter select screen, and speeds up loading screens."
+resolver = "declarative"
+# Skipping only presses the game's own skip buttons; no game state is added.
+save_compatibility = "shared"
+
+[[target]]
+game_id = "SLUS-00433"
+
+[[feature]]
+id = "quick-start"
+name = "Quick start"
+description = "Skip the start-up videos and in-game cutscenes, and load faster; also the friendly-fire rule. Each part can be turned off below."
+group = "Quality of Life"
+default_enabled = true
+
+[[option]]
+feature = "quick-start"
+id = "skip_intro"
+label = "Skip start-up videos"
+description = "Skip the Eidos and Core Design logos and the intro film, as pressing START does (about 50 seconds)."
+group = "Quality of Life"
+type = "boolean"
+default = "true"
+
+[[option]]
+feature = "quick-start"
+id = "skip_cutscenes"
+label = "Skip cutscenes"
+description = "Skip the in-game cutscenes (the helicopter scene before the first level, the story scenes between levels and the ending), as pressing X does."
+group = "Quality of Life"
+type = "boolean"
+default = "true"
+
+[[option]]
+feature = "quick-start"
+id = "straight_to_select"
+label = "Straight to fighter select"
+description = "Skip PRESS START and the 1 / 2 PLAYER GAME menu: the game opens on the fighter select screen. Player 1 is in; players 2 and 3 join there with X and leave with TRIANGLE. In an online match everyone in the room is in. TRIANGLE (player 1) goes back to the original menu (options, memory card)."
+group = "Quality of Life"
+type = "boolean"
+default = "true"
+
+[[option]]
+feature = "quick-start"
+id = "load_speed"
+label = "Loading speed"
+description = "How much faster than real time a loading screen may run. 0 = as fast as this computer allows, 1 = authentic. Not used in netplay. Game logic is unchanged; only waiting is shorter."
+group = "Quality of Life"
+type = "integer"
+min = 0
+max = 64
+step = 1
+default = 0
+
+[[option]]
+feature = "quick-start"
+id = "friendly_fire"
+label = "Friendly fire"
+description = "On: players can hurt each other with punches, kicks, thrown objects, explosions and gun shots, as in the original two-player game. Off: a player's attacks reach only the enemies; thrown objects and shots fly through the other players. Enemies still hit everyone. In an online match everyone must use the same setting. Needs the Third player feature (on by default)."
+group = "Gameplay"
+type = "boolean"
+default = "true"
+
+[[plugin]]
+feature = "quick-start"
+id = "ff.quick-start"
