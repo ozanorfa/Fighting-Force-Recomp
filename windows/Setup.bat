@@ -82,6 +82,10 @@ set /p "CUE=  Disc .cue: "
 if not defined CUE goto :ask_cue
 set "CUE=%CUE:"=%"
 :check_cue
+rem A typed path may be relative or have no drive letter: make it full
+rem here, from the folder Setup started in (the build runs in the install
+rem folder). Every route to the disc passes this line.
+for %%F in ("%CUE%") do set "CUE=%%~fF"
 if not exist "%CUE%" goto :cue_missing
 for %%F in ("%CUE%") do set "CUEDIR=%%~dpF"
 set NBIN=0

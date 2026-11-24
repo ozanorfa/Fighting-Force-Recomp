@@ -24,6 +24,10 @@ ran on macOS.
     crowded levels (5, 7, 8, 9, 11, 12 and 18) there is no room for a third
     fighter, and player 3 still looks wrong there. The game measures this at
     each level start and never overfills a table.
+- **Setup accepts a disc path typed by hand** that is relative or has no
+  drive letter. Before, the build read such a path from the install folder
+  and stopped with "no disc at ...". A dragged `.cue` and the automatic
+  disc search were not affected.
 
 ### Changed
 - **README** reorganised, with pictures of the game and the launcher.

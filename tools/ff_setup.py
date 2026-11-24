@@ -80,7 +80,10 @@ def main() -> int:
     ap.add_argument("--old", default="", help="(ignored; kept for older Setup.bat files)")
     ap.add_argument("--dry-run", action="store_true", help="say what would be done, build nothing")
     args = ap.parse_args()
-    disc = Path(args.disc).expanduser()
+    # Absolute from the caller's folder, so disc_source.txt never holds a
+    # relative path. abspath, not resolve(): on Windows resolve() turns a
+    # mapped drive letter into a UNC path.
+    disc = Path(os.path.abspath(Path(args.disc).expanduser()))
     if not disc.is_file():
         sys.exit(f"no disc at {disc}")
 
