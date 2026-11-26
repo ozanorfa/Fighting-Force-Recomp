@@ -31,6 +31,7 @@ R = 0x800B4318
 
 G_LEVEL, G_DONE = 0x80093D58, 0x800941B8
 G_FRAME, G_PAUSE = 0x80093DD0, 0x80093DD8
+G_CHEATS, G_START_LEVEL = 0x80093D68, 0x800927B4   # as tools/ff_p3_textures.py
 
 
 def p3_pause_round(peers, tap, shot):
@@ -80,7 +81,7 @@ def p3_pause_round(peers, tap, shot):
 
 def load_and_change_level(host, peers, shot, slot):
     """The host loads savestate `slot` (made by ff_make_levelend_state.py at
-    level 0's end) into the running match; the framework hands it to every
+    a level's end, level 0 by default) into the running match; the framework hands it to every
     peer. Then the level-done sequence and the next level's load (P3's
     fighter included) run inside the match."""
     def lv(p):
@@ -94,13 +95,16 @@ def load_and_change_level(host, peers, shot, slot):
         host.wait_frames(30)
     print("after load (level, done):", [lv(p) for p in peers], "frame", host.frame(), flush=True)
     shot("loaded")
+    loaded_level = lv(host)[0]  # the state's level (0 from ff_make_levelend_state.py's default)
     f0 = host.frame()
-    while host.frame() - f0 < 9000 and not all(lv(p)[0] >= 1 for p in peers):
+    while host.frame() - f0 < 9000 and not all(lv(p)[0] != loaded_level for p in peers):
         host.wait_frames(60)
     print("level change (level, done):", [lv(p) for p in peers], "after", host.frame() - f0, "frames", flush=True)
     host.wait_frames(900)
     print("  P3 plugin:", [p.cmd("mod_cmd", name="ff.p3", args="show").get("reply", "")[:160] for p in peers],
           flush=True)
+    print("  P3 textures:", [" ".join(w for w in p.cmd("mod_cmd", name="ff.p3", args="show").get("reply", "").split()
+                                      if w.startswith("tex_")) for p in peers], flush=True)
     shot("level1")
 
 
@@ -142,6 +146,8 @@ def main() -> int:
     ap.add_argument("--p3-pause", action="store_true",
                     help="after the fight: P3 pauses with START on its own pad, P1's START does nothing, "
                          "P3's START resumes; checked on every peer")
+    ap.add_argument("--start-level", type=int, default=-1,
+                    help="TEST ONLY: start at this level id (the game's level-select cheat, debug writes on every peer)")
     ap.add_argument("--stagger", type=float, default=0.0,
                     help="seconds between starting the host, guest 1 and guest 2 (late joins)")
     args = ap.parse_args()
@@ -298,12 +304,39 @@ def main() -> int:
             to_select()
         shot("select")
         tap(g2, "RIGHT", gap=30)      # P3 moves its cursor with its own pad
+        def write_start_level():
+            for p in peers:
+                cheats = struct.unpack("<I", p.read(G_CHEATS, 4))[0]
+                p.cmd("write_bulk", addr=f"0x{G_CHEATS:08X}", hex=struct.pack("<I", cheats | 2).hex())
+                p.cmd("write_bulk", addr=f"0x{G_START_LEVEL:08X}",
+                      hex=struct.pack("<I", args.start_level).hex())
+
+        if args.start_level >= 0:
+            # TEST ONLY: the game's level-select cheat (the same debug writes as
+            # ff_p3_textures.py) on every peer, read when the level starts.
+            # They land a frame or two apart on the three peers. A rollback can
+            # go back up to its snapshot ring's depth (40 x 16 frames) and undo
+            # a write, so they are repeated every 30 frames from 300 frames
+            # before the confirms until 750 frames after them.
+            print("start level written from frames", frames(), flush=True)
+            for _ in range(10):
+                write_start_level()
+                host.wait_frames(30)
         tap(host, "CROSS", gap=60)    # P1
         tap(g1, "CROSS", gap=60)      # P2
         tap(g2, "CROSS", gap=60)      # P3
         shot("picked")
-        host.wait_frames(3300)
+        waited = 0
+        if args.start_level >= 0:
+            for _ in range(25):
+                write_start_level()
+                host.wait_frames(30)
+            waited = 750
+        host.wait_frames(3300 - waited)
         shot("level")
+        print("level per peer:", [struct.unpack("<i", p.read(G_LEVEL, 4))[0] for p in peers], flush=True)
+        print("  P3 textures:", [" ".join(w for w in p.cmd("mod_cmd", name="ff.p3", args="show").get("reply", "").split()
+                                          if w.startswith("tex_")) for p in peers], flush=True)
     if args.poke_desync:
         host.wait_frames(120)
         addr = R + 2 * 0xF4 + 0x42

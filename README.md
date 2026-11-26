@@ -130,8 +130,11 @@ the others.
 **Options:** none. Player 3's input comes from controller seat 3, the same
 synchronised seat input netplay uses, so it is safe online.
 
-**Costs:** a level start loads player 3's fighter textures as well, where the
-game has room for them (see [Known limits](#known-limits)).
+**Costs:** a level start loads player 3's fighter textures as well. In 7
+crowded levels the game's own load leaves no room for a third fighter, so
+player 3's fighter is loaded in a second step, into space that level leaves
+unused. If a level ever has too little space, player 3 keeps the wrong look
+there rather than overfill anything.
 
 ### Quick Start (`ff.quick-start`, Mods → Quality of Life → Quick Start)
 
@@ -192,10 +195,6 @@ The game opens on the framework's launcher. Its main parts:
 - **No Mac ↔ Windows matches.** They are untested, and the framework does
   not claim that a macOS build and a Windows build stay in step. Matches are
   meant for Windows PCs over Radmin VPN.
-- **Player 3 looks wrong in 7 crowded levels** (5, 7, 8, 9, 11, 12, 18).
-  The game has room in its texture table and video memory for only two
-  fighters' textures there. Elsewhere player 3's fighter is drawn correctly.
-  This changes only the look: player 3 plays the same.
 - **Matches draw at the native resolution (1x).** Offline the picture is
   4x. Why the Internal Resolution choice does not reach a match is not
   traced.

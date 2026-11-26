@@ -25,7 +25,8 @@ textures.
 A native screenshot of the level is kept for the eye.
 
 --levels runs the "smasher" scenario (Hawk, Mace, Smasher: the three largest
-fighter texture sets) once per level id, started with the game's own
+fighter texture sets), or the --scenarios given, once per level id (e.g.
+--levels 5,7-9), started with the game's own
 level-select cheat (test-only writes, as tools/ff_p3_waves.py does), and
 also reports the free cells of the game's VRAM allocation map (0x800E1140,
 0x40 x 0x100 bytes, 1 = used; the allocator FUN_80066acc hangs when no
@@ -73,18 +74,22 @@ def main() -> int:
     ap.add_argument("--game", default="game_3p.toml")
     ap.add_argument("--disc", default="disc/FightingForce.cue")
     ap.add_argument("--port", type=int, default=4423)
-    ap.add_argument("--scenarios", default=",".join(SCENARIOS))
-    ap.add_argument("--levels", default="", help="e.g. 0-24: the smasher scenario per level id")
+    ap.add_argument("--scenarios", default=None,
+                    help="default: all four; with --levels: smasher (the largest three fighters)")
+    ap.add_argument("--levels", default="", help="e.g. 0-24 or 7,12: the smasher scenario (or --scenarios) per level id")
     args = ap.parse_args()
     out = Path(args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, PSX_OVERLAY_AUTOCOMPILE_OFF="1", PSX_DEBUG_SERVER="1")
     results, seen_p3 = [], set()
 
-    runs = [(n, None) for n in args.scenarios.split(",")]
+    runs = [(n, None) for n in (args.scenarios or ",".join(SCENARIOS)).split(",")]
     if args.levels:
-        lo, _, hi = args.levels.partition("-")
-        runs = [("smasher", lv) for lv in range(int(lo), int(hi or lo) + 1)]
+        levels = []
+        for part in args.levels.split(","):
+            lo, _, hi = part.partition("-")
+            levels += range(int(lo), int(hi or lo) + 1)
+        runs = [(n, lv) for lv in levels for n in (args.scenarios or "smasher").split(",")]
     for name, level in runs:
         p1_taps, p2_taps, p3_taps = SCENARIOS[name]
         tag = name if level is None else f"{name}_lv{level:02d}"
@@ -143,7 +148,7 @@ def main() -> int:
             for b in p3_taps:
                 p3_tap(b)
             c.wait_frames(20)
-            loads0, skips0 = show("tex_loads"), show("tex_skips")
+            loads0, skips0, app0 = show("tex_loads"), show("tex_skips"), show("tex_appends")
             if level is not None:
                 cheats = struct.unpack("<I", c.read(G_CHEATS, 4))[0]
                 c.cmd("write_bulk", addr=f"0x{G_CHEATS:08X}", hex=struct.pack("<I", cheats | 2).hex())
@@ -158,11 +163,17 @@ def main() -> int:
             c.wait_frames(300)
             types = stable_types()
             b = bases()
-            loads1, skips1 = show("tex_loads"), show("tex_skips")
+            loads1, skips1, app1 = show("tex_loads"), show("tex_skips"), show("tex_appends")
             entries = struct.unpack("<I", c.read(ENTRIES, 4))[0]
             lmap = struct.unpack("<4096h", c.read(LEVEL_MAP, 0x2000))
             map_bad = sum(1 for v in lmap if v != -4 and not 0 <= v < 3 * entries)
-            est = {k: show(k) for k in ("tex_entries", "tex_free")}
+            est = {k: show(k) for k in ("tex_entries", "tex_free", "tex_room", "tex_need", "tex_acc_wait",
+                                          "tex_tiles")}
+            m = re.search(r"\btex_fail=0x([0-9A-Fa-f]+)", p3("show"))
+            if m and int(m[1], 16):
+                f = int(m[1], 16)  # the first texture the fit check could not place
+                est["tex_fail"] = dict(texture=f >> 16 & 0x7FFF, w=(f >> 8 & 0x3F) * 8, h=(f >> 2 & 0x3F) * 8,
+                                       depth=f & 3, palette_block=bool(f >> 31))
             c.shot(str(out / f"{tag}_level.png"))
             if level is not None:
                 vmap = c.read(VRAM_MAP, VRAM_MAP_SIZE)
@@ -173,17 +184,23 @@ def main() -> int:
                          running=c.frame() >= f1 + 120)
             played = set(types)
             distinct = len(played) == 3 and all(0 <= t <= 3 for t in types)
-            loaded = loads1 == loads0 + 1 and skips1 == skips0
-            skipped = skips1 == skips0 + 1 and loads1 == loads0
+            loaded = loads1 == loads0 + 1 and skips1 == skips0 and app1 == app0
+            appended = app1 == app0 + 1 and loads1 == loads0 and skips1 == skips0
+            skipped = skips1 == skips0 + 1 and loads1 == loads0 and app1 == app0
             # the slots this level's loads set: P1's, P2's and (loaded, or measured
             # when there is no room) P3's; never the fourth fighter or HAWK2
             bases_ok = (all(b[t] != MARK for t in types if 0 <= t <= 4)
                         and all(b[k] == MARK for k in range(5) if k not in played))
             r.update(map_bad=map_bad, types=[NAMES[t] if 0 <= t <= 4 else t for t in types], bases=b,
-                     result="P3 loaded" if loaded else "no room, stock load" if skipped else "?",
+                     result="P3 loaded" if loaded else "P3 in a second load" if appended
+                     else "no room, stock load" if skipped else "?",
                      **est)
-            r["ok"] = (distinct and (loaded or (skipped and level is not None)) and bases_ok
-                       and map_bad == 0 and r.get("running", True))
+            counters = {x["name"]: x["count"] for x in c.cmd("mod_counters").get("counters", [])
+                        if x["name"].startswith("ff.p3.tex")}
+            r["tex_counters"] = counters
+            r["ok"] = (distinct and (loaded or appended or (skipped and level is not None)) and bases_ok
+                       and map_bad == 0 and r.get("running", True)
+                       and not counters.get("ff.p3.tex_sim_mismatch"))
             if distinct:
                 seen_p3.add(types[2])
             else:
