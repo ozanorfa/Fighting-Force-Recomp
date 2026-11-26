@@ -146,6 +146,10 @@ def main() -> int:
     ap.add_argument("--p3-pause", action="store_true",
                     help="after the fight: P3 pauses with START on its own pad, P1's START does nothing, "
                          "P3's START resumes; checked on every peer")
+    ap.add_argument("--own-folders", action="store_true",
+                    help="each peer in a folder of its own (shipped mod defaults; its own psx_last_run_report.json)")
+    ap.add_argument("--freeze-guest", type=float, default=0.0,
+                    help="TEST ONLY: stop guest 2 for this many seconds (SIGSTOP / SIGCONT) before the fight")
     ap.add_argument("--start-level", type=int, default=-1,
                     help="TEST ONLY: start at this level id (the game's level-select cheat, debug writes on every peer)")
     ap.add_argument("--stagger", type=float, default=0.0,
@@ -164,10 +168,23 @@ def main() -> int:
         (out / "cards0").mkdir(parents=True, exist_ok=True)
         import shutil
         shutil.copyfile(args.host_card, out / "cards0" / "card1.mcd")
+    root = Path(__file__).resolve().parent.parent
     for i in range(3):
         cards = out / f"cards{i}"
         cards.mkdir(exist_ok=True)
-        cmd = [args.exe, args.mode, "--no-launcher", "--game", args.game, "--disc", args.disc,
+        exe, cwd = args.exe, None
+        if args.own_folders:
+            # Each peer in a folder of its own, as on a player's PC (the
+            # shipped mod defaults, no launcher settings): its
+            # psx_last_run_report.json and logs stay apart.
+            import ff_lanroom
+            cwd = out / f"run{i}"
+            ff_lanroom.make_peer(Path(args.exe).resolve().parent, cwd)
+            (cwd / "mods" / "state.toml").unlink()
+            (cwd / "settings.toml").unlink(missing_ok=True)
+            exe = str(cwd / Path(args.exe).name)
+        cmd = [exe, args.mode, "--no-launcher", "--game", str((root / args.game).resolve()),
+               "--disc", str((root / args.disc).resolve()),
                "--memcard-dir", str(cards), "--debug-port", str(4371 + i), "--net-slot", str(i)]
         # Every peer binds its own UDP port (guests default to the host's port,
         # which collides on one machine); guests dial the host.
@@ -175,7 +192,7 @@ def main() -> int:
         if i:
             cmd += ["--net-peer", f"127.0.0.1:{args.port}"]
         log = open(out / f"peer{i}.log", "w")
-        procs.append((subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env), log))
+        procs.append((subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, cwd=cwd), log))
         if args.stagger:
             print(f"peer{i} started at {time.strftime('%H:%M:%S')}", flush=True)
             if i == 0:
@@ -366,6 +383,23 @@ def main() -> int:
                      if "desync" in l.lower() or "stopped running" in l.lower() or "mismatch" in l.lower()]
             print(f"peer{i} log:", lines[:4], flush=True)
         return 0
+    if args.freeze_guest:
+        # Guest 2 stops (SIGSTOP) for FREEZE seconds, then runs on: a PC that
+        # hangs for a moment. macOS / Linux only. Measured 2026-11-26 on
+        # framework 9dd018c2 (BUGS #54): the other two never wait, they play
+        # on with guest 2's input held; after a stop of 1.0 s or more guest 2
+        # cannot catch up and the match ends ~20 s later for everyone, with
+        # PSX_NET_LIVENESS_MS 1500 or 5000 alike; 0.5 s survived.
+        import signal
+        host.wait_frames(300)
+        g2_proc = procs[2][0]
+        print(f"freezing guest 2 for {args.freeze_guest} s at host frame {host.frame()}", flush=True)
+        os.kill(g2_proc.pid, signal.SIGSTOP)
+        time.sleep(args.freeze_guest)
+        os.kill(g2_proc.pid, signal.SIGCONT)
+        print("guest 2 runs again; peers alive:", [pr.poll() is None for pr, _ in procs], flush=True)
+        time.sleep(3)
+        print("after the freeze, peers alive:", [pr.poll() is None for pr, _ in procs], flush=True)
     # fight a little: everyone punches / walks
     f0 = host.frame()
     t0 = time.time()
