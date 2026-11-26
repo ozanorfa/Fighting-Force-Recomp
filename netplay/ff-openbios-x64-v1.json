@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "profile": "ff-openbios-x64-v1",
+  "revision": 1,
+  "game": "SLUS-00433",
+  "title_profile": "ff.third-player, its compatibility id in src/mods/third_player.c",
+  "use": "matches between Windows PCs (LAN / Direct IP, Radmin VPN)",
+  "host": "Windows x64, the same executable artifact on every peer (one prebuilt release ZIP)",
+  "backend": "ENHANCED with built-in LLE OpenBIOS and sealed interpreted overlays",
+  "required_optional_cpu_features": 0,
+  "fp_contract": 2,
+  "bios": {"image_id": "OPENBIOS", "image_wordsum": "C4DAEB88"},
+  "session": {
+    "slots": "2 or 3",
+    "players": "2 or 3",
+    "rollback": "on, or off for delay sync",
+    "loading": "Quick Start on or off, the same on every peer",
+    "observer": false,
+    "aspect": "native 4:3 only"
+  },
+  "authoritative_renderer": "software 1x; software or OpenGL presentation stays local",
+  "evidence": "declared before FF's first Windows test day: FF's netplay tests so far ran on macOS arm64 only (3 peers on loopback, rollback and delay sync, with lag and loss). Change this file, and with it the qualification, once Windows matches are tested.",
+  "excluded": ["cross-build or native PE/ELF compatibility", "macOS, Linux and other host architectures", "Vulkan presentation", "spectators", "other BIOS images", "simulation mods other than ff.third-player and ff.quick-start"]
+}

@@ -10,7 +10,21 @@ holds the current number. The two mod packages keep their own package version
 Newest first. No version has been played on Windows yet: every test so far
 ran on macOS.
 
-## 0.12.0 — 2026-11-18 — not yet given to players
+## 0.13.0 — 2026-11-26 — not yet given to players
+
+### Fixed
+- **Player 3's fighter has the right clothes and skin in every level.**
+  - 0.12.0 left 7 crowded levels (5, 7, 8, 9, 11, 12 and 18) where the game
+    had no room for a third fighter's textures, so player 3 still looked
+    wrong there.
+  - In those levels the game now loads player 3's fighter in a second step,
+    after its own load. It goes into space the game's own load leaves
+    unused: the end of the texture table, free video memory, and the
+    entries and video memory of the ground tiles that level never shows.
+  - The mod checks the space first, the same way the game would fill it. When
+    there is not enough, it keeps the old look rather than overfill anything.
+
+## 0.12.0 — 2026-11-18
 
 ### Fixed
 - **Player 3's fighter has the right clothes and skin in most levels.**

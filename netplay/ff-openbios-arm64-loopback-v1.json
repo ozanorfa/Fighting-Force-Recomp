@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "profile": "ff-openbios-arm64-loopback-v1",
+  "revision": 1,
+  "game": "SLUS-00433",
+  "title_profile": "ff.third-player, its compatibility id in src/mods/third_player.c",
+  "use": "developer tests only: every peer on one Mac, direct loopback (127.0.0.1), no relay or lobby",
+  "host": "macOS arm64, the same executable artifact on every peer",
+  "backend": "ENHANCED with built-in LLE OpenBIOS and sealed interpreted overlays",
+  "required_optional_cpu_features": 0,
+  "fp_contract": 1,
+  "bios": {"image_id": "OPENBIOS", "image_wordsum": "C4DAEB88"},
+  "session": {
+    "slots": "2 or 3",
+    "players": "2 or 3",
+    "rollback": "on, or off for delay sync",
+    "loading": "Quick Start on or off, the same on every peer",
+    "observer": false,
+    "aspect": "native 4:3 only",
+    "scope": "direct loopback only (PSX_HOST_PROFILE_DIRECT_LOOPBACK)"
+  },
+  "authoritative_renderer": "software 1x; software or OpenGL presentation stays local",
+  "evidence": "FF's 3-peer loopback match tests on one Mac (tools/ff_net_local.py, tools/run_tests.py): state digests equal on every peer",
+  "excluded": ["any network beyond 127.0.0.1", "matches with Windows PCs", "cross-build compatibility", "Vulkan presentation", "spectators", "other BIOS images", "simulation mods other than ff.third-player and ff.quick-start"]
+}

@@ -338,9 +338,17 @@ enum {
     M_TEX_SKIPS = 0x3B8,     /* ... that kept the stock load (no room for P3's fighter) */
     M_TEX_ENTRIES = 0x3BC,   /* last level: texture entries with P3's fighter (estimate) */
     M_TEX_FREE = 0x3C0,      /* last level: VRAM map cells left with P3's fighter (estimate) */
-    /* 0x3C4..0x3FF: free */
+    M_TEX_APPENDS = 0x3C4,   /* level texture loads that added P3's fighter in a second load (tex_append_p3) */
+    M_TEX_ACC_TYPE = 0x3C8,  /* fighter type + 1 whose texture -> entry values wait in M_TEX_ACC for
+                              * P3's model load (the index table had no room); 0 = none */
+    M_TEX_ACC_COUNT = 0x3CC, /* ... how many */
+    M_TEX_ROOM = 0x3D0,      /* last second load: free entries found for P3 (table end + unused ground) */
+    M_TEX_NEED = 0x3D4,      /* ... entries P3's fighter needed */
+    M_TEX_TILES = 0x3D8,     /* ... unused ground tiles it was given in VRAM (0: the stock map had room) */
+    /* 0x3DC..0x3FF: free */
     M_P2_SLOTS = 0x400,  /* P2's values of P1_SLOTS during the pass (0x38) */
-    M_SIZE = 0x440
+    M_TEX_ACC = 0x440,   /* s16[TEX_ACC_STASH]: see M_TEX_ACC_TYPE */
+    M_SIZE = 0x840
 };
 
 static uint32_t rec(uint32_t i, uint32_t off) { return REC_BASE + i * REC_SIZE + off; }
@@ -546,6 +554,8 @@ static void p3_format_score(void) {
 
 static uint32_t guest_call(struct CPUState* cpu, uint32_t fn, uint32_t a0, uint32_t a1,
                            uint32_t a2, uint32_t ra);
+static uint32_t tex_acc_swap_in(uint32_t type);
+static void tex_acc_swap_out(uint32_t type, uint32_t n);
 
 static void put_cstr(uint32_t dst, const char* str) {
     uint32_t k = 0;
@@ -592,7 +602,9 @@ static int p3_load_fighter(struct CPUState* cpu, uint32_t type, uint32_t ra) {
     psx_mod_write_word(G_WAD_SIZE, size);
     psx_mod_write_word(G_MODEL_HEAP, g_fighter_model);
     psx_mod_write_half(G_LOAD_BAR, 0);
+    const uint32_t acc_n = tex_acc_swap_in(type);
     guest_call(cpu, FN_LOAD_MODEL, g_mem + M_NAMES, type, FIGHTER_SLOT[type], ra);
+    tex_acc_swap_out(type, acc_n);
     uint32_t used = psx_mod_read_word(G_MODEL_HEAP) - g_fighter_model;
     guest_call(cpu, FN_LOAD_MOVES, g_mem + M_NAMES + 16, type, 0, ra);
     psx_mod_write_word(G_WAD_BASE, base);
@@ -631,10 +643,10 @@ static uint32_t p3_pick_fighter(void) { return p3_pick_type(psx_mod_read_word(g_
  * the stale base points at in this level (Alana as a scrambled "robot").
  *
  * A third fighter does not fit in every level. The loader writes one 12-byte
- * entry per texture to the table at 0x800A8768 (count DAT_80094838) with no
- * bound; 0x800ADA40 (the sound library's data, then the per-level function
- * table 0x800ADBE0) follows after 1767 entries. A fighter adds about 480
- * entries, and with three fighters 6 of the 25 levels went past the end and
+ * entry per texture (8x8 flat ones excepted) to the table at 0x800A8768
+ * (count DAT_80094838) with no bound; 0x800ADA40 (the sound library's data,
+ * then the per-level function table 0x800ADBE0) follows after 1767 entries.
+ * A fighter adds 117..137 entries, and with three fighters 6 of the 25 levels went past the end and
  * crashed through the overwritten level function pointer. VRAM is the other
  * limit: the allocator FUN_80066acc hangs when no rectangle fits (map
  * 0x800E1140, 0x40 x 0x100 bytes, 1 = used).
@@ -737,6 +749,434 @@ static void tex_pass(struct CPUState* cpu, const uint32_t regs[32], uint32_t kee
     }
 }
 
+/* ---- P3's fighter in a level without room for one widened load -----------
+ * In 7 crowded levels P1 + P2 + P3 in one load go past the entry table's end
+ * (levels 5, 7, 8, 9, 11, 18) or leave too few VRAM cells for the widened
+ * path's margin (level 12). There, after the stock load, P3's slot is loaded
+ * by a second run of the loader with every other slot's name taken out, and
+ * its results are moved into room the stock load leaves unused:
+ *
+ * - Entries. A fighter is 117..137 entries (Mace, Hawk, Smasher; most of its
+ *   ~460 textures are 8x8 flat ones, which take none). Every model reaches an entry through the
+ *   texture -> entry table DAT_8009ACC8 when it is converted (FUN_80060110
+ *   writes entry * 12 as u16 into the model), and P3's model is converted
+ *   after the texture load (wrap_spawn_pos -> p3_load_fighter). So P3's
+ *   entries can sit anywhere in the table, one by one:
+ *     1. after the stock load's last entry: the 256 ground entries at
+ *        DAT_800AF4B2 plus the two the loader writes after them (read as
+ *        base + 0x100 / + 0x101 at 0x80026808) end the stock table;
+ *     2. in ground entries the level map does not use. The map (0x8009F870,
+ *        loaded before the texture load by the level's own init, written by
+ *        nothing else) holds (v + base) * 3 per cell; only its cells read
+ *        ground entries (FUN_8001100c, FUN_800112a4).
+ *   Measured in the 7 levels (Hawk + Mace + Smasher, the largest three): 153
+ *   to 345 free entries for P3's 137.
+ * - Texture indices. If the stock count + P3's still fit in the 4000-entry
+ *   table (0x8009CC08, the per-level function table, follows it), P3's
+ *   values go after the stock ones and P3's slot base points there. If not,
+ *   they wait in M_TEX_ACC and are put in for the one model conversion that
+ *   reads them (tex_acc_swap_in / _out): no other code reads a fighter slot's
+ *   values in a level (Ghidra: the model loaders, and the front end's slide
+ *   show for slots 1..5).
+ * - VRAM. The loader clears the allocation map first (FUN_80066EF4); during
+ *   the second run that clear is followed by the stock load's map
+ *   (wrap_vram_reset), so P3's textures and palettes go into cells the stock
+ *   load left free. Only the loader allocates VRAM (Ghidra: FUN_80066ACC and
+ *   FUN_80066D14 have no other caller), and its allocator hangs when nothing
+ *   fits, so P3's whole slot is first run through a copy of the allocator
+ *   (tex_sim_*) on a copy of the map; the second run only starts when every
+ *   texture fits. The copy must give the guest's own result: a difference
+ *   counts in ff.p3.tex_sim_mismatch. When the stock map has no room (levels
+ *   7 and 12 leave only 5 rows), the ground tiles the level map never uses
+ *   are offered too (tex_free_ground_tiles) and the check runs again.
+ * - Everything else the second run writes is put back as the stock load left
+ *   it: the entry table, the index table, the slot bases, the counters, the
+ *   level map (converted once more by the run), the palette copies at
+ *   0x800B4AB8 (fighter textures are 4-bit with their own CLUTs; a P3 entry
+ *   of another depth stops the second load).
+ * If anything does not fit, the stock load stays and tex_skips counts it. */
+#define G_TEX_TABLE      0x800A8768u /* 12-byte entries */
+#define G_TEX_ACC        0x8009ACC8u /* s16[4000]: texture -> entry index */
+#define TEX_ACC_ROOM     4000u
+#define TEX_ACC_STASH    512u        /* M_TEX_ACC: (M_SIZE - M_TEX_ACC) / 2 */
+#define G_TEX_COUNT      0x8009440Cu /* textures the loader counted */
+#define G_TEX_FLAT       0x80093A58u /* ... 8x8 flat ones */
+#define G_TEX_BASES      0x800AF418u /* s16[0x4F]: first texture of each slot */
+#define TEX_SLOTS        0x4Fu
+#define G_GROUND_BASE    0x800AF4B2u /* s16: first ground entry */
+#define GROUND_ENTRIES   256u
+#define GROUND_EXTRA     2u          /* written after them, not counted */
+#define G_VRAM_ROWS      0x80094208u /* s16[0x40]: used cells per map row */
+#define VRAM_ROWS_SIZE   0x80u
+#define VRAM_ROW_FULL    0x100
+#define G_CLUT_STAGE     0x800B4AB8u /* 16 rows of 0x200: palettes for VRAM y 0x1F0.. */
+#define CLUT_STAGE_SIZE  0x2000u
+#define G_TEX_CURSOR     0x800947CCu /* s16 x, s16 y: the loader's last rectangle */
+#define G_WAD_FILE_SIZE  0x80094570u /* size of the last file FUN_800611F8 found */
+#define G_WAD_DIRECTORY  0x80094038u /* -> big-endian count, then 20-byte entries */
+#define G_WAD_DATA       0x80094818u /* file offsets are relative to this */
+#define FN_VRAM_RESET    0x80066EF4u
+static const uint32_t G_VRAM_RESET[4] = {0x27BDFFD8u, 0xAFBF0024u, 0xAFB40020u, 0xAFB3001Cu};
+
+/* The stock load's state, for the duration of one tex_append_p3 call. */
+static uint32_t g_tx_table[TEX_ENTRY_ROOM * 3];
+static uint16_t g_tx_acc[TEX_ACC_ROOM];
+static uint16_t g_tx_bases[TEX_SLOTS];
+static uint32_t g_tx_names[2][TEX_SLOTS];
+static uint32_t g_tx_stage[CLUT_STAGE_SIZE / 4];
+static uint8_t g_tx_vram[VRAM_MAP_SIZE];         /* the map the second run starts from */
+static int16_t g_tx_rows[VRAM_ROWS_SIZE / 2];
+static uint8_t g_tx_vram_stock[VRAM_MAP_SIZE];   /* ... and the stock load's, unchanged */
+static int16_t g_tx_rows_stock[VRAM_ROWS_SIZE / 2];
+static uint8_t g_sim_vram[VRAM_MAP_SIZE];
+static int16_t g_sim_rows[VRAM_ROWS_SIZE / 2];
+static uint16_t g_tx_hole[GROUND_ENTRIES + TEX_ENTRY_ROOM];
+static uint32_t g_tx_p3_entry[TEX_ENTRY_ROOM * 3]; /* the second run's entries */
+static uint16_t g_tx_p3_acc[TEX_ACC_STASH];        /* ... and texture -> entry values */
+static int g_tex_keep_vram; /* wrap_vram_reset: put the stock map back after the clear */
+
+static void tex_vram_write(const uint8_t* map, const int16_t* rows) {
+    for (uint32_t o = 0; o < VRAM_MAP_SIZE; o += 4)
+        psx_mod_write_word(G_VRAM_MAP + o, (uint32_t)map[o] | (uint32_t)map[o + 1] << 8 |
+                                               (uint32_t)map[o + 2] << 16 | (uint32_t)map[o + 3] << 24);
+    for (uint32_t r = 0; r < VRAM_ROWS_SIZE / 2; r++) psx_mod_write_half(G_VRAM_ROWS + 2 * r, (uint16_t)rows[r]);
+}
+
+/* The level's 64 ground tiles (32 x 32, 8-bit) fill VRAM x 768..895,
+ * y 0..255 (FUN_80063900 loads them once per level, rect 0x80093A78; the
+ * allocator map keeps cells 0xC0..0xDF of rows 0..0x1F reserved for them).
+ * Tile t is at x 768 + 16 * (t & 7), y 32 * (t >> 3): map cells
+ * 0xC0 + 4 * (t & 7) .. + 3, rows 4 * (t >> 3) .. + 3. Only the ground
+ * entries read them (tpage 0x300, the loader's last loop; the game makes
+ * that page nowhere else), entry base + 4t .. 4t + 3. A tile none of whose
+ * four entries a map cell uses is never drawn in this level, so its cells
+ * can take P3's textures. Frees them in the second run's map; returns how
+ * many tiles. */
+static uint32_t tex_free_ground_tiles(const uint8_t used[GROUND_ENTRIES]) {
+    uint32_t tiles = 0;
+    for (uint32_t t = 0; t < GROUND_ENTRIES / 4; t++) {
+        if (used[4 * t] || used[4 * t + 1] || used[4 * t + 2] || used[4 * t + 3]) continue;
+        const uint32_t x = 0xC0 + 4 * (t & 7), y = 4 * (t >> 3);
+        int reserved = 1;
+        for (uint32_t r = y; r < y + 4; r++)
+            for (uint32_t c = x; c < x + 4; c++)
+                if (!g_tx_vram[r * 0x100 + c]) reserved = 0;
+        if (!reserved) continue;
+        for (uint32_t r = y; r < y + 4; r++) {
+            memset(&g_tx_vram[r * 0x100 + x], 0, 4);
+            g_tx_rows[r] = (int16_t)(g_tx_rows[r] - 4);
+        }
+        tiles++;
+    }
+    return tiles;
+}
+
+static uint32_t bswap32(uint32_t v) {
+    return (v >> 24) | (v << 24) | ((v >> 8) & 0xFF00u) | ((v & 0xFF00u) << 8);
+}
+
+/* The stage WAD's file `name_ptr` (a guest string): FUN_800611F8's lookup
+ * without its loading-bar frames. */
+static int wad_find(uint32_t name_ptr, uint32_t* data, uint32_t* size) {
+    if (!name_ptr) return 0;
+    uint8_t want[16] = {0};
+    for (uint32_t k = 0; k < 15; k++) {
+        want[k] = psx_mod_read_byte(name_ptr + k);
+        if (!want[k]) break;
+    }
+    const uint32_t dir = psx_mod_read_word(G_WAD_DIRECTORY);
+    const uint32_t count = bswap32(psx_mod_read_word(dir));
+    for (uint32_t e = 0, p = dir + 4; e < count && e < 4096u; e++, p += 20) {
+        uint32_t k = 0;
+        while (k < 12 && psx_mod_read_byte(p + k) == want[k]) k++;
+        if (k == 12) {
+            *size = bswap32(psx_mod_read_word(p + 12));
+            *data = psx_mod_read_word(G_WAD_DATA) + bswap32(psx_mod_read_word(p + 16));
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int tex_sim_fits(int x, int row, int cw, int ch) {
+    for (int r = row; r < row + ch; r++) {
+        if (g_sim_rows[r] == VRAM_ROW_FULL) return 0;
+        for (int c = x; c < x + cw; c++)
+            if (g_sim_vram[r * 0x100 + c]) return 0;
+    }
+    return 1;
+}
+
+/* FUN_80066ACC on the copy: first fit, by 32-row band, row, texture page. */
+static int tex_sim_rect(int w, int h, int depth) {
+    const int tw = 0x10 << (depth & 0x1F);
+    if (depth == 0) w >>= 1;
+    if (depth == 2) w <<= 1;
+    int cw = (w + 7) >> 3, ch = (h + 7) >> 3;
+    if (cw > 0x20) cw = 0x20;
+    if (ch > 0x20) ch = 0x20;
+    for (int band = 0; band < 0x40; band += 0x20)
+        for (int row = band; row < band + 0x21 - ch; row++) {
+            if (g_sim_rows[row] == VRAM_ROW_FULL) continue;
+            for (int x0 = 0; x0 < 0x100; x0 += tw)
+                for (int x = x0; x < x0 + tw - cw + 1; x++)
+                    if (tex_sim_fits(x, row, cw, ch)) {
+                        for (int r = row; r < row + ch; r++) {
+                            memset(&g_sim_vram[r * 0x100 + x], 1, (size_t)cw);
+                            g_sim_rows[r] = (int16_t)(g_sim_rows[r] + cw);
+                        }
+                        return 1;
+                    }
+        }
+    return 0;
+}
+
+/* FUN_80066D14 on the copy: 4 cells (8 palettes) in rows 0x20..0x3F. */
+static int tex_sim_clut(void) {
+    for (int row = 0x20; row < 0x40; row++) {
+        if (g_sim_rows[row] == VRAM_ROW_FULL) continue;
+        for (int x = 0; x < 0x100; x += 4) {
+            uint8_t* c = &g_sim_vram[row * 0x100 + x];
+            if (!c[0] && !c[1] && !c[2] && !c[3]) {
+                memset(c, 1, 4);
+                g_sim_rows[row] = (int16_t)(g_sim_rows[row] + 4);
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+/* Walk slot `slot`'s .PDT as the loader does (one call starts with no
+ * palette block) and allocate on the copy. Returns 1 when every texture
+ * fits; *entries / *textures as the loader will count them. */
+/* Debug only (host side, for "show"): the first texture the copy could not
+ * place in the last check: texture number << 16 | w / 8 << 8 | h / 8 << 2 |
+ * depth, bit 31 for a palette block. */
+static _Atomic uint32_t g_dbg_tex_fail = 0;
+
+static int tex_sim_slot(uint32_t slot, uint32_t* entries, uint32_t* textures) {
+    uint32_t data = 0, size = 0;
+    atomic_store(&g_dbg_tex_fail, 0);
+    if (!wad_find(psx_mod_read_word(G_TEX_NAMES_B + 4u * slot), &data, &size)) return 0;
+    uint32_t p = data, n = 0, t = 0;
+    int clut_left = 0;
+    while (p < data + size) {
+        const int w = (int16_t)psx_mod_read_half(p), h = (int16_t)psx_mod_read_half(p + 2);
+        const int depth = (int8_t)psx_mod_read_byte(p + 5);
+        if (w <= 0 || h <= 0 || w > 0x101 || h > 0x101 || depth < 0 || depth > 2) return 0;
+        const uint32_t fail = t << 16 | (uint32_t)(w >> 3 & 0x3F) << 8 | (uint32_t)(h >> 3 & 0x3F) << 2 | (uint32_t)depth;
+        int bytes = depth == 0 ? ((w * h) >> 1) + 0x20 : depth == 1 ? w * h : w * h * 2;
+        uint32_t rounded = (uint32_t)(bytes + 0x1F) & ~0x1Fu, next = p + 0x20;
+        if (!(w == 8 && h == 8)) {
+            if (depth == 0) {
+                if (clut_left == 0) {
+                    if (!tex_sim_clut()) {
+                        atomic_store(&g_dbg_tex_fail, fail | 0x80000000u);
+                        return 0;
+                    }
+                    clut_left = 8;
+                }
+                clut_left--;
+                next = p + 0x40;
+                rounded -= 0x20;
+            }
+            if (!tex_sim_rect(w, h, depth)) {
+                atomic_store(&g_dbg_tex_fail, fail);
+                return 0;
+            }
+            next += rounded;
+            n++;
+        }
+        t++;
+        p = next;
+    }
+    *entries = n;
+    *textures = t;
+    return 1;
+}
+
+/* Wrap of FUN_80066EF4 (the loader's first step: clear the VRAM allocation
+ * map, mark the frame buffers). During tex_append_p3's run the stock load's
+ * map follows the clear. */
+static int wrap_vram_reset(struct CPUState* cpu) {
+    func_override_call_original(cpu);
+    if (g_tex_keep_vram) tex_vram_write(g_tx_vram, g_tx_rows);
+    return 1;
+}
+
+static void tex_put_back(int with_vram, uint32_t e_stock, uint32_t t_stock, uint32_t flat, int16_t ground,
+                         uint32_t cursor, uint32_t file_size) {
+    for (uint32_t k = 0; k < TEX_ENTRY_ROOM * 3; k++) psx_mod_write_word(G_TEX_TABLE + 4 * k, g_tx_table[k]);
+    for (uint32_t k = 0; k < TEX_ACC_ROOM; k++) psx_mod_write_half(G_TEX_ACC + 2 * k, g_tx_acc[k]);
+    for (uint32_t k = 0; k < TEX_SLOTS; k++) psx_mod_write_half(G_TEX_BASES + 2 * k, g_tx_bases[k]);
+    for (uint32_t k = 0; k < CLUT_STAGE_SIZE / 4; k++) psx_mod_write_word(G_CLUT_STAGE + 4 * k, g_tx_stage[k]);
+    tex_map_restore();
+    psx_mod_write_word(G_TEX_ENTRIES, e_stock);
+    psx_mod_write_word(G_TEX_COUNT, t_stock);
+    psx_mod_write_word(G_TEX_FLAT, flat);
+    psx_mod_write_half(G_GROUND_BASE, (uint16_t)ground);
+    psx_mod_write_word(G_TEX_CURSOR, cursor);
+    psx_mod_write_word(G_WAD_FILE_SIZE, file_size);
+    if (with_vram) tex_vram_write(g_tx_vram_stock, g_tx_rows_stock);
+}
+
+/* Right after the stock load (P1's and P2's fighters): load P3's fighter
+ * `want` in a second run, see the block comment above. Returns 1 when P3's
+ * slot is in place. */
+static int tex_append_p3(struct CPUState* cpu, const uint32_t regs[32], uint32_t want) {
+    const uint32_t slot = FIGHTER_TEX_SLOT0 + want;
+    const uint32_t e_stock = psx_mod_read_word(G_TEX_ENTRIES), t_stock = psx_mod_read_word(G_TEX_COUNT);
+    const uint32_t flat = psx_mod_read_word(G_TEX_FLAT), cursor = psx_mod_read_word(G_TEX_CURSOR);
+    const uint32_t file_size = psx_mod_read_word(G_WAD_FILE_SIZE);
+    const int16_t ground = (int16_t)psx_mod_read_half(G_GROUND_BASE);
+    if (ground < 0 || e_stock != (uint32_t)ground + GROUND_ENTRIES ||
+        e_stock + GROUND_EXTRA > TEX_ENTRY_ROOM || t_stock > TEX_ACC_ROOM) {
+        psx_mod_counter_add("ff.p3.tex_append_odd_stock", 1);
+        return 0;
+    }
+    /* Free entries: after the stock table, then ground entries no map cell uses. */
+    uint8_t used[GROUND_ENTRIES] = {0};
+    tex_map_save(); /* the stock load's converted map */
+    for (uint32_t k = 0; k < TEX_LEVEL_MAP_SIZE / 2; k++) {
+        const int16_t v = (int16_t)(k & 1 ? g_tex_level_map[k / 2] >> 16 : g_tex_level_map[k / 2] & 0xFFFFu);
+        if (v == -4) continue;
+        const int32_t i = v / 3 - ground;
+        if (v < 0 || v % 3 || i < 0 || i >= (int32_t)GROUND_ENTRIES) {
+            psx_mod_counter_add("ff.p3.tex_append_odd_map", 1);
+            return 0;
+        }
+        used[i] = 1;
+    }
+    uint32_t room = 0;
+    for (uint32_t e = e_stock + GROUND_EXTRA; e < TEX_ENTRY_ROOM; e++) g_tx_hole[room++] = (uint16_t)e;
+    for (uint32_t i = 0; i < GROUND_ENTRIES; i++)
+        if (!used[i]) g_tx_hole[room++] = (uint16_t)(ground + (int32_t)i);
+    /* P3's slot through a copy of the allocator, on the stock load's map. */
+    for (uint32_t o = 0; o < VRAM_MAP_SIZE; o += 4) {
+        const uint32_t w = psx_mod_read_word(G_VRAM_MAP + o);
+        for (uint32_t b = 0; b < 4; b++) g_tx_vram[o + b] = (uint8_t)(w >> (8 * b));
+    }
+    for (uint32_t r = 0; r < VRAM_ROWS_SIZE / 2; r++) g_tx_rows[r] = (int16_t)psx_mod_read_half(G_VRAM_ROWS + 2 * r);
+    memcpy(g_tx_vram_stock, g_tx_vram, sizeof(g_tx_vram_stock));
+    memcpy(g_tx_rows_stock, g_tx_rows, sizeof(g_tx_rows_stock));
+    memcpy(g_sim_vram, g_tx_vram, sizeof(g_sim_vram));
+    memcpy(g_sim_rows, g_tx_rows, sizeof(g_sim_rows));
+    uint32_t need = 0, tex = 0, tiles = 0;
+    int fits = tex_sim_slot(slot, &need, &tex);
+    if (!fits) {
+        /* No room on the stock map: also offer the ground tiles no map cell
+         * uses, then check again on that map. */
+        tiles = tex_free_ground_tiles(used);
+        if (tiles) {
+            memcpy(g_sim_vram, g_tx_vram, sizeof(g_sim_vram));
+            memcpy(g_sim_rows, g_tx_rows, sizeof(g_sim_rows));
+            fits = tex_sim_slot(slot, &need, &tex);
+        }
+    }
+    psx_mod_write_word(g_mem + M_TEX_ROOM, room);
+    psx_mod_write_word(g_mem + M_TEX_NEED, need);
+    psx_mod_write_word(g_mem + M_TEX_TILES, fits ? tiles : 0u);
+    const int acc_after = t_stock + tex <= TEX_ACC_ROOM;
+    if (!fits || need == 0 || need > room || need > TEX_ENTRY_ROOM || tex > TEX_ACC_STASH) {
+        psx_mod_counter_add(fits ? "ff.p3.tex_append_no_entries" : "ff.p3.tex_append_no_vram", 1);
+        return 0;
+    }
+    /* The stock state, then the second run with P3's slot alone. */
+    for (uint32_t k = 0; k < TEX_ENTRY_ROOM * 3; k++) g_tx_table[k] = psx_mod_read_word(G_TEX_TABLE + 4 * k);
+    for (uint32_t k = 0; k < TEX_ACC_ROOM; k++) g_tx_acc[k] = psx_mod_read_half(G_TEX_ACC + 2 * k);
+    for (uint32_t k = 0; k < TEX_SLOTS; k++) g_tx_bases[k] = psx_mod_read_half(G_TEX_BASES + 2 * k);
+    for (uint32_t k = 0; k < CLUT_STAGE_SIZE / 4; k++) g_tx_stage[k] = psx_mod_read_word(G_CLUT_STAGE + 4 * k);
+    for (uint32_t k = 0; k < TEX_SLOTS; k++) {
+        g_tx_names[0][k] = psx_mod_read_word(G_TEX_NAMES_A + 4 * k);
+        g_tx_names[1][k] = psx_mod_read_word(G_TEX_NAMES_B + 4 * k);
+        if (k != slot) {
+            psx_mod_write_word(G_TEX_NAMES_A + 4 * k, 0);
+            psx_mod_write_word(G_TEX_NAMES_B + 4 * k, 0);
+        }
+    }
+    memcpy(cpu->gpr, regs, 32 * sizeof(uint32_t));
+    cpu->gpr[4] = 1; /* load-everything mode: the one slot that has a name */
+    g_tex_keep_vram = 1;
+    func_override_call_original(cpu);
+    g_tex_keep_vram = 0;
+    for (uint32_t k = 0; k < TEX_SLOTS; k++) {
+        psx_mod_write_word(G_TEX_NAMES_A + 4 * k, g_tx_names[0][k]);
+        psx_mod_write_word(G_TEX_NAMES_B + 4 * k, g_tx_names[1][k]);
+    }
+    /* What the run made: entries 0..k-1 (then its own ground block), textures
+     * 0..t-1 of P3's slot, P3's textures and palettes in VRAM. */
+    const uint32_t k_run = (uint32_t)(int16_t)psx_mod_read_half(G_GROUND_BASE);
+    const uint32_t t_run = psx_mod_read_word(G_TEX_COUNT), flat_run = psx_mod_read_word(G_TEX_FLAT);
+    int ok = k_run == need && t_run == tex && (int16_t)psx_mod_read_half(G_TEX_BASES + 2 * slot) == 0;
+    uint32_t* const p3_entry = g_tx_p3_entry;
+    uint16_t* const p3_acc = g_tx_p3_acc;
+    for (uint32_t j = 0; ok && j < need; j++) {
+        for (uint32_t w = 0; w < 3; w++) p3_entry[3 * j + w] = psx_mod_read_word(G_TEX_TABLE + 12 * j + 4 * w);
+        const uint32_t tpage = p3_entry[3 * j + 1] >> 16;
+        if ((tpage >> 7) & 3) ok = 0; /* not 4-bit: its palette would be a copy at 0x800B4AB8 */
+    }
+    for (uint32_t i = 0; ok && i < tex; i++) {
+        p3_acc[i] = psx_mod_read_half(G_TEX_ACC + 2 * i);
+        if (p3_acc[i] > need) ok = 0;
+    }
+    int sim_same = 1;
+    for (uint32_t o = 0; ok && o < VRAM_MAP_SIZE && sim_same; o += 4) {
+        const uint32_t w = psx_mod_read_word(G_VRAM_MAP + o);
+        for (uint32_t b = 0; b < 4; b++)
+            if (g_sim_vram[o + b] != (uint8_t)(w >> (8 * b))) sim_same = 0;
+    }
+    for (uint32_t r = 0; ok && r < VRAM_ROWS_SIZE / 2; r++)
+        if ((int16_t)psx_mod_read_half(G_VRAM_ROWS + 2 * r) != g_sim_rows[r]) sim_same = 0;
+    if (ok && !sim_same) psx_mod_counter_add("ff.p3.tex_sim_mismatch", 1);
+    /* Put the stock load's state back; on success keep the run's VRAM map
+     * (stock + P3), else the stock one. */
+    tex_put_back(!ok, e_stock, t_stock, flat + (ok ? flat_run : 0u), ground, cursor, file_size);
+    if (!ok) {
+        psx_mod_counter_add("ff.p3.tex_append_run_differs", 1);
+        return 0;
+    }
+    for (uint32_t j = 0; j < need; j++)
+        for (uint32_t w = 0; w < 3; w++) psx_mod_write_word(G_TEX_TABLE + 12u * g_tx_hole[j] + 4 * w, p3_entry[3 * j + w]);
+    /* A flat texture points at the entry of the next one (or, last in the
+     * slot, the run's first ground entry): the same after the move. */
+    for (uint32_t i = 0; i < tex; i++) p3_acc[i] = p3_acc[i] < need ? g_tx_hole[p3_acc[i]] : (uint16_t)ground;
+    if (acc_after) {
+        for (uint32_t i = 0; i < tex; i++) psx_mod_write_half(G_TEX_ACC + 2 * (t_stock + i), p3_acc[i]);
+        psx_mod_write_half(G_TEX_BASES + 2 * slot, (uint16_t)t_stock);
+        psx_mod_write_word(G_TEX_COUNT, t_stock + tex);
+    } else {
+        for (uint32_t i = 0; i < tex; i++) psx_mod_write_half(g_mem + M_TEX_ACC + 2 * i, p3_acc[i]);
+        psx_mod_write_word(g_mem + M_TEX_ACC_COUNT, tex);
+        psx_mod_write_word(g_mem + M_TEX_ACC_TYPE, want + 1);
+        psx_mod_write_half(G_TEX_BASES + 2 * slot, 0);
+        psx_mod_counter_add("ff.p3.tex_acc_stashed", 1);
+    }
+    return 1;
+}
+
+/* Around P3's model conversion: when P3's texture -> entry values wait in
+ * M_TEX_ACC, put them at the start of the index table with P3's slot base at
+ * 0 for that one call, then the level's values back. Returns how many. */
+static uint16_t g_acc_keep[TEX_ACC_STASH];
+
+static uint32_t tex_acc_swap_in(uint32_t type) {
+    if (!g_mem || psx_mod_read_word(g_mem + M_TEX_ACC_TYPE) != type + 1) return 0;
+    const uint32_t n = psx_mod_read_word(g_mem + M_TEX_ACC_COUNT);
+    if (n == 0 || n > TEX_ACC_STASH) return 0;
+    for (uint32_t i = 0; i < n; i++) {
+        g_acc_keep[i] = psx_mod_read_half(G_TEX_ACC + 2 * i);
+        psx_mod_write_half(G_TEX_ACC + 2 * i, psx_mod_read_half(g_mem + M_TEX_ACC + 2 * i));
+    }
+    psx_mod_write_half(G_TEX_BASES + 2 * (FIGHTER_TEX_SLOT0 + type), 0);
+    return n;
+}
+
+static void tex_acc_swap_out(uint32_t type, uint32_t n) {
+    (void)type;
+    for (uint32_t i = 0; i < n; i++) psx_mod_write_half(G_TEX_ACC + 2 * i, g_acc_keep[i]);
+}
+
 /* DEBUG ONLY (host-side, never set in play or netplay): "ff.p3 texmode N"
  * 0 = measure first (the shipped path), 1 = one load with P3's slot added,
  * 2 = the stock load only. Used to compare guest state between the paths. */
@@ -744,6 +1184,7 @@ static _Atomic int g_dbg_tex_mode = 0;
 
 static int wrap_tex_load(struct CPUState* cpu) {
     const int level = g_mem && cpu->gpr[31] == RA_TEX_LOAD_LEVEL && cpu->gpr[4] == 0;
+    if (level) psx_mod_write_word(g_mem + M_TEX_ACC_TYPE, 0); /* nothing waits from an earlier level */
     const int want = level ? p3_coming_type() : -1;
     const int t0 = rec_type(0), t1 = rec_type(1);
     if (want < 0 || want == t0 || want == t1 || want >= (int)FIGHTER_TEX_SLOTS) {
@@ -773,6 +1214,13 @@ static int wrap_tex_load(struct CPUState* cpu) {
     psx_mod_write_word(g_mem + M_TEX_ENTRIES, e_stock + p3_entries);
     psx_mod_write_word(g_mem + M_TEX_FREE, f_stock > p3_cells ? f_stock - p3_cells : 0u);
     if (e_stock + p3_entries + TEX_ENTRY_SPARE > TEX_ENTRY_ROOM || f_stock < p3_cells + VRAM_SPARE_CELLS) {
+        /* No room for one widened load: P3's slot in a second load, into the
+         * room the stock load leaves (tex_append_p3). */
+        if (tex_append_p3(cpu, regs, (uint32_t)want)) {
+            psx_mod_write_word(g_mem + M_TEX_APPENDS, psx_mod_read_word(g_mem + M_TEX_APPENDS) + 1);
+            psx_mod_counter_add("ff.p3.tex_append", 1);
+            return 1;
+        }
         psx_mod_write_word(g_mem + M_TEX_SKIPS, psx_mod_read_word(g_mem + M_TEX_SKIPS) + 1);
         psx_mod_counter_add("ff.p3.tex_no_room", 1);
         return 1; /* the stock load stays */
@@ -2946,7 +3394,8 @@ static int cmd_p3(const char* args, char* reply, int cap) {
                     "continues=%u gameover_held=%u fighter=%u loads=%u leash=%u weapon_views=%u weapon_p3=%u "
                     "held_waves=%u held_pod=%u held_dropoff=%u sel_active=%u dropin=%u p3_joined=%u max_seats=%d "
                     "pvp=%u pve=%u pblast=%u pshot=%u gifts=%u pauses=%u pause_p3=%u tex_loads=%u "
-                    "tex_skips=%u tex_entries=%u tex_free=%u",
+                    "tex_skips=%u tex_entries=%u tex_free=%u tex_appends=%u tex_room=%u tex_need=%u "
+                    "tex_acc_wait=%u tex_fail=0x%08X tex_tiles=%u",
                     g_mem, (unsigned)P3_SEAT, (unsigned)atomic_load(&g_dbg_conn),
                     (unsigned)atomic_load(&g_dbg_pad_word),
                     (unsigned)atomic_load(&g_dbg_samples),
@@ -2984,7 +3433,13 @@ static int cmd_p3(const char* args, char* reply, int cap) {
                     g_mem ? (unsigned)psx_mod_read_word(g_mem + M_TEX_LOADS) : 0u,
                     g_mem ? (unsigned)psx_mod_read_word(g_mem + M_TEX_SKIPS) : 0u,
                     g_mem ? (unsigned)psx_mod_read_word(g_mem + M_TEX_ENTRIES) : 0u,
-                    g_mem ? (unsigned)psx_mod_read_word(g_mem + M_TEX_FREE) : 0u);
+                    g_mem ? (unsigned)psx_mod_read_word(g_mem + M_TEX_FREE) : 0u,
+                    g_mem ? (unsigned)psx_mod_read_word(g_mem + M_TEX_APPENDS) : 0u,
+                    g_mem ? (unsigned)psx_mod_read_word(g_mem + M_TEX_ROOM) : 0u,
+                    g_mem ? (unsigned)psx_mod_read_word(g_mem + M_TEX_NEED) : 0u,
+                    g_mem ? (unsigned)psx_mod_read_word(g_mem + M_TEX_ACC_TYPE) : 0u,
+                    (unsigned)atomic_load(&g_dbg_tex_fail),
+                    g_mem ? (unsigned)psx_mod_read_word(g_mem + M_TEX_TILES) : 0u);
 }
 
 /* ---- Netplay ---------------------------------------------------------------
@@ -3031,10 +3486,15 @@ static uint32_t p3_state_digest(void) {
  * /11: P3 gets the next-level weapon gift and pauses with START (its own
  * "PAUSED 3P" menu, driven by seat 3), as P1 / P2 do.
  * /12: the level's texture load includes P3's fighter when neither P1 nor P2
- * plays it and it fits (VRAM and the texture tables change). */
+ * plays it and it fits (VRAM and the texture tables change).
+ * host_profiles: the host-profile catalog a newer framework requires before
+ * any match (ff_host_profiles.c); absent on frameworks without that API. */
+#if defined(PSX_MOD_NETPLAY_HOST_CATALOG_API) && PSX_MOD_NETPLAY_HOST_CATALOG_API >= 2
+int ff_host_profiles(const PSXModNetplayHostStartup *in, PSXHostProfileCatalog *out);
+#endif
 static const PSXModNetplayProfile P3_NETPLAY_PROFILE = {
     .plugin_id = P3_PLUGIN_ID,
-    .compatibility_id = "ff.third-player/12",
+    .compatibility_id = "ff.third-player/13",
     .rollback_supported = 1,
     .savestates_supported = 1,
     .skip_bios_intro = 0,
@@ -3044,6 +3504,9 @@ static const PSXModNetplayProfile P3_NETPLAY_PROFILE = {
     .loading_package_id = "ff.quick-start",
     .loading_feature_id = "quick-start",
     .loading_plugin_id = "ff.quick-start",
+#if defined(PSX_MOD_NETPLAY_HOST_CATALOG_API) && PSX_MOD_NETPLAY_HOST_CATALOG_API >= 2
+    .host_profiles = ff_host_profiles,
+#endif
 };
 
 PSX_MOD_CONSTRUCTOR(register_ff_third_player) {
@@ -3055,6 +3518,8 @@ PSX_MOD_CONSTRUCTOR(register_ff_third_player) {
                                              G_SPAWN_POS, 4, FO_CREDIT_SELF);
     (void)psx_mod_register_function_override(P3_PLUGIN_ID ":textures", FN_TEX_LOAD, wrap_tex_load,
                                              G_TEX_LOAD, 4, FO_CREDIT_SELF);
+    (void)psx_mod_register_function_override(P3_PLUGIN_ID ":vram-reset", FN_VRAM_RESET, wrap_vram_reset,
+                                             G_VRAM_RESET, 4, FO_CREDIT_SELF);
     (void)psx_mod_register_function_override(P3_PLUGIN_ID, FN_ENEMY_COUNT, wrap_enemy_count,
                                              G_ENEMY_COUNT, 4, FO_CREDIT_SELF);
     (void)psx_mod_register_function_override(P3_PLUGIN_ID, FN_WAVES, wrap_waves,
