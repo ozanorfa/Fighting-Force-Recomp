@@ -1,32 +1,100 @@
 # Fighting Force — Recompiled
 
-A native PC version of the PlayStation game *Fighting Force*. It was made
-with the static recompiler [PSXRecomp](https://github.com/RetroPortingToolKit/psxrecomp)
-and the launcher [recomp-ui](https://github.com/RetroPortingToolKit/recomp-ui).
-It runs on Windows and macOS.
+*Fighting Force* is a 3D beat 'em up for the original Sony PlayStation
+(PS1), made by Core Design and published by Eidos Interactive in 1997. This
+unofficial fan project turns that PlayStation game into a native program for
+Windows and macOS.
 
-The original game has four fighters (Hawk, Mace, Smasher and Alana) but only
-two players. **Its main mod adds a third simultaneous player**: three players
-each pick a different fighter and play the campaign together, on one PC or
-on three PCs over a LAN.
+It also adds something the original never had: **a third simultaneous
+player**. The original game has four fighters (Hawk, Mace, Smasher and
+Alana) but only two players. Here three players each pick a different
+fighter and play the campaign together, on one PC or on three PCs over a
+LAN.
 
 ![Three players in the first level: Hawk, Alana and Mace](docs/images/three-players.jpg)
 
 **This repository holds no game data and no game code.** You need your own
-copy of *Fighting Force (USA)* (SLUS-00433): one `.cue` file and all 27
-`.bin` tracks (the Redump layout). Every build is made from that disc.
+copy of the PlayStation disc *Fighting Force (USA)* (SLUS-00433): one `.cue`
+file and all 27 `.bin` tracks (the Redump layout). Every build is made from
+that disc.
 
 | | |
 |---|---|
-| Players | 3 (2 in the original game) |
-| Region | USA (SLUS-00433) |
+| Original game | *Fighting Force*, Sony PlayStation (PS1), 1997 |
+| Genre | 3D beat 'em up |
 | Original developer | Core Design |
 | Original publisher | Eidos Interactive |
-| Year | 1997 |
+| Players | 3 (1 or 2 in the original game) |
+| Disc used | PlayStation, USA (SLUS-00433) |
+| This port | Windows and macOS (Windows not tested yet, see [Known limits](#known-limits)) |
 
 - Players' guide (first start, matches over Radmin VPN, saves, what to send
   when something goes wrong): [`docs/PLAYING_TOGETHER.md`](docs/PLAYING_TOGETHER.md)
 - What changed in each version: [`CHANGELOG.md`](CHANGELOG.md)
+
+## About the original game
+
+*Fighting Force* came out on the PlayStation in November 1997, in North
+America and in Europe. A Windows PC version came out in Europe in October
+1997. Crave Entertainment released *Fighting Force 64* for the Nintendo 64
+in 1999. In Japan the PlayStation game was released as *Metal Fist* (1998).
+
+Core Design first offered the game to Sega as a possible fourth *Streets of
+Rage* game. Sega said no, and Core made it a game of its own. A sequel,
+*Fighting Force 2*, followed in 1999.
+
+**The story.** Dr. Dex Zeng, a criminal mastermind with his own army,
+predicted that the world would end in the year 2000. When it did not, he set
+out to destroy it himself. Four fighters go after him:
+- Hawk Manson;
+- Mace Daniels;
+- Ben "Smasher" Jackson;
+- Alana McKendricks.
+
+The fight starts at the police cordon around Zeng's office tower. It goes
+through a shopping mall, the subway and a Coast Guard base, and ends at his
+island headquarters.
+
+**How it plays.**
+- One or two players each pick one of the four fighters. With two players,
+  both share one screen and one camera.
+- The levels are 3D city and science-fiction places, with waves of
+  enemies.
+- Hawk and Mace are all-rounders. Smasher is slow and strong, and Alana is
+  fast.
+- Much of the scenery can be smashed. Things lying around become weapons:
+  soda cans, knives, guns. Smasher can even lift and throw a car engine.
+- Each fighter has a special move that costs some of their health.
+- At some points the players choose which way to go.
+
+The release facts are from [Wikipedia's *Fighting Force*
+article](https://en.wikipedia.org/wiki/Fighting_Force). The player count and
+the shared camera were checked on the USA disc.
+
+## What this project is
+
+- **A recompilation, not an emulator reading the disc's program.** The
+  static recompiler [PSXRecomp](https://github.com/RetroPortingToolKit/psxrecomp)
+  takes the game's PlayStation program (MIPS R3000A machine code) from your
+  disc and translates it into C ahead of time. A normal C compiler then
+  makes a native program for your PC from that C. Code the recompiler did
+  not find ahead of time runs in a built-in interpreter.
+- **The PlayStation's hardware is still emulated.** The game's code expects
+  a PS1's graphics chip, sound chip, CD drive and controllers, so the
+  PSXRecomp runtime provides them. The pictures, sound and music come from
+  your disc.
+- **No Sony BIOS is needed.** The game runs on the bundled open-source
+  OpenBIOS.
+- **The launcher** is [recomp-ui](https://github.com/RetroPortingToolKit/recomp-ui):
+  controllers, settings, mods and the online room.
+- **What this repository holds:**
+  - the recompiler's inputs for this game: config, function list and symbol
+    names;
+  - the source of the two mods, the third player and Quick Start;
+  - the build, setup and test tools, and the docs;
+  - the framework and the launcher, as git submodules.
+- **What it does not hold:** the disc, the generated C and the compiled
+  game. Your build makes them from your own disc on your own PC.
 
 ## What the mods add
 

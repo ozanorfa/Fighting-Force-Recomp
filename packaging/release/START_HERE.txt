@@ -1,5 +1,9 @@
 Fighting Force Recompiled (3 players) @VERSION@
 
+Fighting Force (Core Design, 1997) is a 3D beat 'em up for the original
+Sony PlayStation (PS1), for one or two players. This is a native Windows
+version of it, which plays from your own disc, with a third player added.
+
 For friends only: do not upload or share this ZIP publicly. It contains no
 disc data and no retail BIOS (OpenBIOS is bundled); you need your own disc.
 

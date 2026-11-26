@@ -48,6 +48,10 @@ SUBMODULES = ("psxrecomp/", "recomp-ui/")
 START_HERE = """Fighting Force Recompiled, three players - START HERE
 =====================================================
 
+Fighting Force (Core Design, 1997) is a 3D beat 'em up for the original
+Sony PlayStation (PS1), for one or two players. This ZIP builds a native
+Windows version of it from your own disc, with a third player added.
+
 1. YOU NEED
    - Windows 10 (version 1903 or newer) or 11, 64-bit; internet for the
      first setup.

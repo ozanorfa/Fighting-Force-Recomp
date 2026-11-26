@@ -1,5 +1,10 @@
 # Playing Fighting Force together (three players, Windows, Radmin VPN)
 
+*Fighting Force* (Core Design, 1997) is a 3D beat 'em up for the original
+Sony PlayStation (PS1), for one or two players. Fighting Force Recompiled
+makes a native Windows program of it from your own disc and adds a third
+player. More about the game and the project: [README](../README.md).
+
 For players. Building by hand, the command-line match and the developer
 notes are in [WINDOWS_NETPLAY.md](WINDOWS_NETPLAY.md).
 

@@ -31,6 +31,10 @@ ran on macOS.
 
 ### Changed
 - **README** reorganised, with pictures of the game and the launcher.
+- **README: what the game and the project are.** New sections say that
+  *Fighting Force* is a 1997 PlayStation (PS1) beat 'em up and how it plays,
+  and what a recompilation is and is not. The players' guides and
+  `START_HERE.txt` now open with the same short line about the game.
 
 ## 0.11.0 — 2026-11-17 to 2026-11-18
 
