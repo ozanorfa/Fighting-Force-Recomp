@@ -92,6 +92,31 @@ target_sources(psx-runtime PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/mods/third_player.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/mods/quick_start.c")
 
+# Netplay host-profile catalog (src/mods/ff_host_profiles.c). Newer frameworks
+# start a match only on a host profile the title declares. Each rule's
+# qualification is the SHA-256 of its contract in netplay/, so a build whose
+# contract changed cannot meet an older one. On a framework without that API
+# the source compiles to nothing.
+set(FF_HOST_CONTRACT_X64 "${CMAKE_CURRENT_SOURCE_DIR}/netplay/ff-openbios-x64-v1.json")
+set(FF_HOST_CONTRACT_ARM64 "${CMAKE_CURRENT_SOURCE_DIR}/netplay/ff-openbios-arm64-loopback-v1.json")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${FF_HOST_CONTRACT_X64}" "${FF_HOST_CONTRACT_ARM64}")
+file(SHA256 "${FF_HOST_CONTRACT_X64}" FF_HOST_QUALIFICATION_X64_SHA256)
+file(SHA256 "${FF_HOST_CONTRACT_ARM64}" FF_HOST_QUALIFICATION_ARM64_LOOPBACK_SHA256)
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/ff-netplay")
+file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/ff-netplay/ff_host_profiles_contract.h"
+    CONTENT "#define FF_HOST_QUALIFICATION_X64_SHA256 \"@FF_HOST_QUALIFICATION_X64_SHA256@\"\n#define FF_HOST_QUALIFICATION_ARM64_LOOPBACK_SHA256 \"@FF_HOST_QUALIFICATION_ARM64_LOOPBACK_SHA256@\"\n"
+    @ONLY)
+target_include_directories(psx-runtime PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/ff-netplay")
+if(TARGET psx-runtime-pgxp) # optional PGXP sibling: it gets the source too
+    target_include_directories(psx-runtime-pgxp PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/ff-netplay")
+endif()
+psxrecomp_add_implementation(psx-runtime
+    NAME ff-host-profile CONTRACT ff-host-profiles-v1
+    HLE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/mods/ff_host_profiles.c"
+    LLE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/mods/ff_host_profiles.c"
+    CONTRACT_FILES "${FF_HOST_CONTRACT_X64}" "${FF_HOST_CONTRACT_ARM64}")
+
 # Stage runtime configs next to the exe for direct build/ launches. Only copy
 # files that exist — never fail POST_BUILD when game_options.toml is absent.
 foreach(_PSX_RUNTIME_CONFIG game.toml game_3p.toml game_options.toml)

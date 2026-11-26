@@ -3486,7 +3486,12 @@ static uint32_t p3_state_digest(void) {
  * /11: P3 gets the next-level weapon gift and pauses with START (its own
  * "PAUSED 3P" menu, driven by seat 3), as P1 / P2 do.
  * /12: the level's texture load includes P3's fighter when neither P1 nor P2
- * plays it and it fits (VRAM and the texture tables change). */
+ * plays it and it fits (VRAM and the texture tables change).
+ * host_profiles: the host-profile catalog a newer framework requires before
+ * any match (ff_host_profiles.c); absent on frameworks without that API. */
+#if defined(PSX_MOD_NETPLAY_HOST_CATALOG_API) && PSX_MOD_NETPLAY_HOST_CATALOG_API >= 2
+int ff_host_profiles(const PSXModNetplayHostStartup *in, PSXHostProfileCatalog *out);
+#endif
 static const PSXModNetplayProfile P3_NETPLAY_PROFILE = {
     .plugin_id = P3_PLUGIN_ID,
     .compatibility_id = "ff.third-player/13",
@@ -3499,6 +3504,9 @@ static const PSXModNetplayProfile P3_NETPLAY_PROFILE = {
     .loading_package_id = "ff.quick-start",
     .loading_feature_id = "quick-start",
     .loading_plugin_id = "ff.quick-start",
+#if defined(PSX_MOD_NETPLAY_HOST_CATALOG_API) && PSX_MOD_NETPLAY_HOST_CATALOG_API >= 2
+    .host_profiles = ff_host_profiles,
+#endif
 };
 
 PSX_MOD_CONSTRUCTOR(register_ff_third_player) {
